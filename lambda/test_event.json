@@ -1,0 +1,7 @@
+{
+  "logs": "Error: Package installation failed\nnpm ERR! code ELIFECYCLE\nnpm ERR! 404 Not Found - GET https://registry.npmjs.org/@types/node/-/node-0.1.0.tgz\nnpm ERR! 404 \nnpm ERR! 404 Repository not found\nnpm ERR! This is probably not a problem with npm.\nnpm ERR! There is likely additional logging output above.\n\nFailed npm packages:\n- @types/node@0.1.0\n\nStack trace:\n  at /usr/local/lib/node_modules/npm/lib/npm.js:123:45\n  at /usr/local/lib/node_modules/npm/lib/npm.js:456:23",
+  "run_id": "test-run-12345",
+  "repository": "prashantsuk/Intelligent-CI-CD-Pipeline-Failure-Agent",
+  "branch": "main",
+  "timestamp": "2024-04-17T10:30:00Z"
+}

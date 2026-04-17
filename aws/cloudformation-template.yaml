@@ -1,0 +1,211 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Intelligent CI/CD Pipeline Failure Agent Infrastructure Stack'
+
+Parameters:
+  SNSEmailAddress:
+    Type: String
+    Description: Email address for SNS notifications
+    NoEcho: false
+  
+  FailureLogsBucketName:
+    Type: String
+    Default: pipeline-failure-logs
+    Description: Base name for S3 bucket (will append account ID)
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: 'SNS Configuration'
+        Parameters:
+          - SNSEmailAddress
+      - Label:
+          default: 'S3 Configuration'
+        Parameters:
+          - FailureLogsBucketName
+
+Resources:
+  # ================== S3 Bucket ==================
+  FailureLogsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${FailureLogsBucketName}-${AWS::AccountId}'
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        LifecycleRules:
+          - Id: DeleteOldLogs
+            Status: Enabled
+            ExpirationInDays: 90
+            NoncurrentVersionExpirationInDays: 30
+          - Id: TransitionToGL
+            Status: Enabled
+            Transitions:
+              - TransitionInDays: 30
+                StorageClass: GLACIER
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Project
+          Value: PipelineFailureAgent
+        - Key: Environment
+          Value: Production
+
+  FailureLogsBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FailureLogsBucket
+      PolicyText:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyUnencryptedObjectUploads
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:PutObject'
+            Resource: !Sub 'arn:aws:s3:::${FailureLogsBucket}/*'
+            Condition:
+              StringNotEquals:
+                's3:x-amz-server-side-encryption': AES256
+
+  # ================== SNS Topic ==================
+  FailureNotificationTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: pipeline-failure-notifications
+      DisplayName: CI/CD Pipeline Failure Notifications
+      Tags:
+        - Key: Project
+          Value: PipelineFailureAgent
+
+  EmailSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref FailureNotificationTopic
+      Protocol: email
+      Endpoint: !Ref SNSEmailAddress
+
+  # ================== IAM Role ==================
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: pipeline-failure-agent-lambda-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: LambdaExecutionPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: BedrockAccess
+                Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:InvokeModelWithResponseStream
+                Resource: '*'
+              
+              - Sid: S3Access
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !GetAtt FailureLogsBucket.Arn
+                  - !Sub '${FailureLogsBucket.Arn}/*'
+              
+              - Sid: SNSPublish
+                Effect: Allow
+                Action:
+                  - sns:Publish
+                Resource: !Ref FailureNotificationTopic
+              
+              - Sid: CloudWatchLogs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: arn:aws:logs:*:*:*
+
+  # ================== CloudWatch Log Group ==================
+  LambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/pipeline-failure-analyzer
+      RetentionInDays: 30
+
+  S3LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/s3/pipeline-failure-logs
+      RetentionInDays: 7
+
+  # ================== CloudWatch Alarms ==================
+  S3BucketSizeAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: PipelineFailureLogs-BucketSize
+      AlarmDescription: Alert when S3 bucket size exceeds 5GB
+      MetricName: BucketSizeBytes
+      Namespace: AWS/S3
+      Statistic: Average
+      Period: 86400
+      EvaluationPeriods: 1
+      Threshold: 5368709120
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: BucketName
+          Value: !Ref FailureLogsBucket
+        - Name: StorageType
+          Value: StandardStorageSize
+      AlarmActions:
+        - !Ref FailureNotificationTopic
+
+  SNSTopicLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: pipeline-failure-analyzer
+      Action: lambda:InvokeFunction
+      Principal: sns.amazonaws.com
+      SourceArn: !Ref FailureNotificationTopic
+
+Outputs:
+  FailureLogsBucketName:
+    Description: Name of S3 bucket for failure logs
+    Value: !Ref FailureLogsBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-FailureLogsBucket'
+
+  FailureLogsBucketArn:
+    Description: ARN of S3 bucket for failure logs
+    Value: !GetAtt FailureLogsBucket.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-FailureLogsBucketArn'
+
+  FailureNotificationTopicArn:
+    Description: ARN of SNS topic for notifications
+    Value: !Ref FailureNotificationTopic
+    Export:
+      Name: !Sub '${AWS::StackName}-SNSTopicArn'
+
+  LambdaExecutionRoleArn:
+    Description: ARN of Lambda execution role
+    Value: !GetAtt LambdaExecutionRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-LambdaRoleArn'
+
+  CloudWatchLogGroup:
+    Description: CloudWatch log group for Lambda
+    Value: !Ref LambdaLogGroup
+    Export:
+      Name: !Sub '${AWS::StackName}-LogGroup'
