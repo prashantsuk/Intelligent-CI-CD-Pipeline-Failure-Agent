@@ -74,6 +74,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "failure_logs" {
   rule {
     id     = "delete-old-logs"
     status = "Enabled"
+    
+    filter {}
 
     expiration {
       days = 90
@@ -87,6 +89,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "failure_logs" {
   rule {
     id     = "transition-to-glacier"
     status = "Enabled"
+    
+    filter {}
 
     transition {
       days          = 30
@@ -174,7 +178,7 @@ resource "aws_cloudwatch_log_group" "lambda_logs" {
 resource "aws_cloudwatch_log_resource_policy" "lambda_logs" {
   policy_name = "lambda-logs-policy"
 
-  policy_text = jsonencode({
+  policy_document = jsonencode({
     Version = "2012-10-17"
     Statement = [
       {
