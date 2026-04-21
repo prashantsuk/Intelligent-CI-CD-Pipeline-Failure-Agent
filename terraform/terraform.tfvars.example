@@ -1,0 +1,33 @@
+# CI/CD Pipeline Failure Agent - Terraform Variables
+# Copy this file to terraform.tfvars and update with your values
+
+# AWS Configuration
+aws_region  = "us-east-1"
+environment = "prod"
+
+# S3 Configuration
+failure_logs_bucket_name = "pipeline-failure-logs"
+
+# SNS Configuration
+sns_topic_name   = "pipeline-failure-notifications"
+sns_email_address = "prashantsukhadeve123@gmail.com"  # REQUIRED: Update with your email
+
+# Lambda Configuration
+lambda_function_name = "pipeline-failure-analyzer"
+lambda_timeout       = 300   # seconds (max 900)
+lambda_memory_size   = 512   # MB
+
+# Bedrock Configuration
+bedrock_model_id               = "anthropic.claude-3-5-sonnet-20241022-v2:0"
+enable_bedrock_model_access    = true
+
+# CloudWatch Configuration
+log_retention_days = 30
+
+# Additional Tags
+tags = {
+  Owner       = "DevOps Team"
+  Project     = "CI-CD Pipeline Automation"
+  CostCenter  = "Engineering"
+  Environment = "Production"
+}
