@@ -90,7 +90,7 @@ variable "bedrock_model_id" {
   default     = "anthropic.claude-3-5-sonnet-20241022-v2:0"
 
   validation {
-    condition     = can(regex("^[a-z0-9.-]+$", var.bedrock_model_id))
+    condition     = can(regex("^[a-z0-9.:-]+$", var.bedrock_model_id))
     error_message = "Must be a valid Bedrock model ID."
   }
 }
